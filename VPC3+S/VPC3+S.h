@@ -25,6 +25,49 @@
 #endif
 
 
+#define GO_OFFLINE              0x04    //Going into the offline state 1
+#define USER_TIMER_CLOCK        0x10    //4 The time base for the User_Timer_Clocks has run out (1/10ms).
+
+//Mask for Mode Reg0
+#define DIS_START_CONTROL       0x01    //;0 Monitoring the following start bit in UART. Set-Param Telegram overwrites this memory cell in the DP mode. (Refer to the user-specific data.) 0 - enabled.
+#define DIS_STOP_CONTROL        0x02    //;1 Stop bit monitoring in UART. Set-Param telegram overwrites this memory cell in the DP mode. (Refer to the user-specific data.)
+#define EN_FDL_DDB              0x04    //;2 reserved
+#define MINTSDR                 0x08    //;3 Default setting for the MinTSDR after reset for DP operation or combi operation 0 = Pure DP operation (default configuration!) 1 = Combi operation
+#define INT_POL                 0x10    //;4 Polarity of the interrupt output 0 = The interrupt output is low-active. 1 = The interrupt output is high-active.
+#define EARLY_RDY               0x20    //;5 Moved up ready signal 0 = Ready is generated when the data are valid (read) or when the data are accepted (write). 1 = Ready is moved up by one clock pulse.
+#define SYNC_SUPPORTED          0x40    //;6  1 = Sync_Mode is supported.
+#define FREEZE_SUPPORTED        0x80    //;7  1 = Freeze_Mode is supported.
+#define DP_MODE                 0x01    //;8  0 = DP_Mode is disabled. 1 = DP_Mode is enabled. SPC3 sets up all DP_SAPs.
+#define EOI_TIME_BASE           0x02    //;9 Time base for the end of interrupt pulse 0 = The interrupt inactive time is at least 1 usec long. 1 = The interrupt inactive time is at least 1 ms long.
+#define USER_TIMEBASE           0x04    //;10 0 = The User_Time_Clock-Interrupt occurs every 1 ms. 1 = The User_Time_Clock-Interrupt occurs every 10 ms.
+#define SET_EXT_PRM_SUPP        0x08    //;11 Test mode for the Watchdog-Timer, no function mode 0 = The WD runs in the function mode. 1 = Not permitted
+#define SPEC_PRM_BUF_MODE       0x10    //;12 Special parameter buffer 0 = No special parameter buffer. 1 1 = Special parameter buffer mode .Parameterization data will be stored directly in the special parameter buffer.
+#define SPEC_CLEAR_MODE         0x20    //;13 Special Clear Mode (Fail Safe Mode) 0 = No special clear mode. 1 = Special clear mode. SPC3 will accept datea telegramms with data unit = 0.
+
+
+//Mask for Set/Reset bit
+#define START_SPC3              0x01    //Exiting the Offline state 1 = SPC3 exits Offline and goes to passiv-idle addition, the idle timer and Wd timer are started and 'Go_Offline = 0' is set.
+#define EOI                     0x02    //End of Interrupt 1 = End of Interrupt: SPC3 switches the interrupt outputs to inactive and again sets EOI to log.'0.'
+#define GO_OFFLINE              0x04    //Going into the offline state 1 =
+#define USER_LEAVE_MASTER       0x08    //Request to the DP_SM to go to 'Wait_Prm.' 1 = The user causes the DP_SM to go to 'Wait_Prm.' After this action, SPC3 sets User_Leave_Master to log.'0.'
+#define EN_CHANGE_CFG_PUFFER    0x10    //Enabling buffer exchange (Cfg buffer for Read_Cfg buffer) 0 = With 'User_Cfg_Data_Okay_Cmd,' the Cfg buffer may not be exchanged for the Read_Cfg buffer.
+                                                // 1 = With 'User_Cfg_Data_Okay_Cmd,' the Cfg buffer must be exchanged for theRead_Cfg buffer.
+#define RES_USER_WD             0x20    //Resetting the User_WD_Timers
+#define VPC3_DIAG_FLAG          0x04
+
+
+#define LEN_DOUT_BUF            14
+#define LEN_DIN_BUF             14
+#define LEN_DIAG_BUF            6           //7 system + 1user
+#define LEN_CNTRL_BUF           31
+#define LEN_SSA_DATA            5           //
+#define LEN_PRM_DATA            10         //7 system + 8user
+#define LEN_CFG_BUF             16
+
+
+#define IDENT1                  0xAF
+#define IDENT0                  0xFD
+
 typedef struct
 {
                                         // address  register
@@ -143,8 +186,70 @@ typedef struct
                                         // SPC3: 040H...5F0H
 }VPC3_STRUC_Type;
 
-#define GET_VPC_ADR(reg) 	((uint16_t)(int)(&((VPC3_STRUC_Type *)0)->reg))
 
+#pragma pack(push,1)
+typedef struct{
+  uint8_t respSent:1;
+  uint8_t sapNumber:7;
+  uint8_t requestSA;
+  uint8_t request_SSAP;
+  uint8_t serviceSupported;
+  uint8_t pIndBuff0;
+  uint8_t pIndBuff1;
+  uint8_t pRespBuff;
+}SAP_type;
+#pragma pack(pop)
+
+#pragma pack(push,1)
+typedef struct{
+  //SAP_type SAP49;
+  SAP_type SAP51;
+  SAP_type SAPFF;
+}SAP_list_type;
+#pragma pack(pop)
+
+#pragma pack(push,1)
+typedef struct{
+  uint8_t user:1;
+  uint8_t ind:1;
+  uint8_t resp:1;
+  uint8_t inuse:1;
+  uint8_t res:4;
+  uint8_t maxLenght;
+  uint8_t lenght;
+  uint8_t funcCode;
+  uint8_t data[160];
+}SAP_buf_type;
+#pragma pack(pop)
+
+#pragma pack(push,1)
+typedef struct{
+    uint8_t    	   Diag_Buf1[LEN_DIAG_BUF];
+    uint8_t        Diag_Buf2[LEN_DIAG_BUF];
+    uint8_t        Aux_Buf1[0x20];
+    uint8_t    	   Aux_Buf2[0x20];
+    uint8_t    	   SSA_Data[0x20];
+    uint8_t    	   Prm_Data[0x20];
+    uint8_t   	   Cfg_Buf[0x20];
+    uint8_t 	   Read_Cfg_Buf[0x20];
+    uint8_t        Dout_Buf1[0x20];
+    uint8_t	   Dout_Buf2[0x20];
+    uint8_t	   Dout_Buf3[0x20];
+    uint8_t 	   Din_Buf1[0x20];
+    uint8_t	   Din_Buf2[0x20];
+    uint8_t        Din_Buf3[0x20];
+    SAP_list_type  SAP_List;
+    SAP_buf_type   Ind_Buff0;
+    SAP_buf_type   Res_Buff0;
+    SAP_buf_type   Ind_Buff1;
+}DP_BUFFERS;
+#pragma pack(pop)
+
+
+#define GET_VPC_ADR(reg)       ((uint16_t)(int)(&((VPC3_STRUC_Type *)0)->reg))
+#define GET_DP_BUFFERS(reg)    ((uint16_t)(int)(&((DP_BUFFERS *)0x40)->reg))
+
+void initVPC3(uint16_t slaveAddr);
 uint16_t writeVPC3(uint16_t regAddr, const void *pTxVal, uint32_t sz);
 uint16_t readVPC3(void *pRxVal, uint16_t regAddr, uint32_t sz);
 

@@ -82,6 +82,10 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
   
+    /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+  
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_SET); //CS = 1
 
 }

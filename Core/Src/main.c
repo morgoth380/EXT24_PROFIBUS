@@ -83,6 +83,9 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI1_Init();
   MX_USART1_UART_Init();
+  
+  #warning После реализации связи по UART вызвать initVPC3 при получении profibus-адреса
+  initVPC3(3);
 
   while (1)
   {
