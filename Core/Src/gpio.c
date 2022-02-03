@@ -29,7 +29,7 @@
 /* Configure GPIO                                                             */
 /*----------------------------------------------------------------------------*/
 /* USER CODE BEGIN 1 */
-
+void VPC3_InterruptProcessing(void);
 /* USER CODE END 1 */
 
 /** Configure pins as
@@ -88,6 +88,18 @@ void MX_GPIO_Init(void)
   
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_SET); //CS = 1
 
+}
+
+/**
+  * @brief  Обработка прерывания дискретного входа
+  * @param  GPIO_Pin: источник прерывания
+  * @retval Результат операции
+  */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if(GPIO_Pin == GPIO_PIN_0){ //Прерывание от VPC3+S
+    VPC3_InterruptProcessing();
+  }
 }
 
 /* USER CODE BEGIN 2 */

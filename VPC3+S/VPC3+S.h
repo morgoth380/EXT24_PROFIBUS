@@ -253,4 +253,13 @@ void initVPC3(uint16_t slaveAddr);
 uint16_t writeVPC3(uint16_t regAddr, const void *pTxVal, uint32_t sz);
 uint16_t readVPC3(void *pRxVal, uint16_t regAddr, uint32_t sz);
 
+
+//Маски для проверки статуса прерываний по получению конфигурационной и параметризирующей телеграмм
+#define NEW_CFG_DATA ((uint16_t)(1 << 10))
+#define NEW_PRM_DATA ((uint16_t)(1 << 11))
+//Mask for Set/Reset bit
+#define START_VPC3   0x01    //Exiting the Offline state 1 = VPC3 exits Offline and goes to passiv-idle addition, the idle timer and Wd timer are started and 'Go_Offline = 0' is set.
+#define MASK_DP_STATE ((uint8_t)0x30)
+#define DATA_EX       ((uint8_t)0x20)
+
 #endif //__VPC3_H

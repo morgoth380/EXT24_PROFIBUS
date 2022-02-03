@@ -7,6 +7,22 @@
 #warning Определиться со временем!
 #define TIMEOUT_VAL 300
 
+static uint8_t do_MAC_Reset(void);
+static uint8_t do_GO_LEAVE_DATA_EX(void);
+static uint8_t do_Baudrate_Detect(void);
+static uint8_t do_WD_DP_MODE_TIMEOUT(void);
+static uint8_t do_User_Timer_Clock(void);
+static uint8_t do_NEW_GC_COMMAND(void);
+static uint8_t do_NEW_SSA_DATA(void);
+static uint8_t do_Prm(void);
+static uint8_t do_Cfg(void);
+static uint8_t do_Diag(void);
+static uint8_t do_DX_OUT(void);
+static uint8_t do_DXB_Link_Error(void);
+static uint8_t do_NEW_Ext_Prm_Data(void);
+static uint8_t do_DXB_Out(void);
+static uint8_t do_Poll_End_Ind(void);
+static uint8_t do_FDL_Inf(void);
 
 /**
   * @brief  Инициализация микросхемы VPC3+S
@@ -14,6 +30,28 @@
   * @param  
   * @retval
   */
+
+
+
+//Массив указателей на обработчики прерываний
+static uint8_t (*pHandlerProfi[])(void) = {
+    do_MAC_Reset,
+    do_GO_LEAVE_DATA_EX,
+    do_Baudrate_Detect,
+    do_WD_DP_MODE_TIMEOUT,
+    do_User_Timer_Clock,
+    do_DXB_Link_Error,
+    do_NEW_Ext_Prm_Data,
+    do_DXB_Out,
+    do_NEW_GC_COMMAND,
+    do_NEW_SSA_DATA,
+    do_Prm,
+    do_Cfg,
+    do_Diag,
+    do_DX_OUT,
+    do_Poll_End_Ind,
+    do_FDL_Inf,
+};
 
 void initVPC3(uint16_t slaveAddr)
 {
@@ -435,5 +473,250 @@ uint16_t readVPC3(void *pRxVal, uint16_t regAddr, uint32_t sz)
   
   memcpy((uint8_t *)pRxVal, (uint8_t *)&WrBuf[3], sz); //Копируем считанные значения
   
+  return 0;
+}
+
+/**
+  * @brief  Обработка прерывания от VPC3+S
+  * @param  None
+  * @retval None
+  */
+void VPC3_InterruptProcessing(void)
+{
+    uint16_t intRequestRegAddr;
+    uint16_t intRequestReg = 0;
+    uint16_t i;
+
+    //Считываем слово текущих запросов прерываний
+    intRequestRegAddr = GET_VPC_ADR(int_req1);
+    readVPC3(&intRequestReg, intRequestRegAddr, sizeof(intRequestReg));
+    
+#warning тут скорее всего дичь. Во первых почему эти прерывания игнорируются, а во вторых тут возможна установка лишнего бита
+    if (((intRequestReg & 0x0C00U) == NEW_PRM_DATA) || ((intRequestReg & 0x0C00) == NEW_CFG_DATA)) {
+            intRequestReg ^= NEW_CFG_DATA;
+            intRequestReg ^= NEW_PRM_DATA;
+    }
+
+    i = 0;
+    while (intRequestReg) {
+      if (intRequestReg & (1 << i)) {
+        if (pHandlerProfi[i]) {
+          pHandlerProfi[i]();
+        }
+      }
+      intRequestReg &= ~(1 << i);
+      i++;
+    }
+
+}
+
+
+#warning Разобраться что делает эта функция
+static uint8_t do_MAC_Reset(void)
+{
+  uint8_t val;
+  uint16_t modeRegAddr = 0;
+
+  val = START_VPC3;
+  modeRegAddr = GET_VPC_ADR(ctrl_reg.wr.mode_reg1_s);
+  writeVPC3(modeRegAddr, &val, sizeof(val));
+
+  return 0;
+}
+
+static uint8_t do_GO_LEAVE_DATA_EX(void)
+{
+  uint16_t regAddr;
+  uint8_t VPC3State;
+  
+  regAddr = GET_VPC_ADR(isreg.rd.status_L);      //регистр статуса
+  readVPC3(&VPC3State, regAddr, sizeof(uint8_t));
+  
+  //если вышли из состояния обмена сброс VPC3
+  if((VPC3State & MASK_DP_STATE) != DATA_EX){
+    #warning тут нужно вставить реальный адрес, полученный от верхнего уровня
+    initVPC3(3); 
+  }
+
+  return 0;
+}
+
+static uint8_t do_Baudrate_Detect(void)
+{
+  return 0;
+}
+
+static uint8_t do_WD_DP_MODE_TIMEOUT(void)
+{
+  return 0;
+}
+
+static uint8_t do_User_Timer_Clock(void)
+{
+  
+  uint16_t regAddr;
+  uint8_t prmVal;
+
+  prmVal = RES_USER_WD;
+  regAddr = GET_VPC_ADR(ctrl_reg.wr.mode_reg1_s);
+  writeVPC3(regAddr, &prmVal, sizeof(prmVal));
+
+  prmVal = USER_TIMER_CLOCK;
+  regAddr = GET_VPC_ADR(isreg.wr.int_ack1);
+  writeVPC3(regAddr, &prmVal, sizeof(prmVal));
+
+  return 0;
+}
+
+static uint8_t do_DXB_Link_Error(void)
+{
+  return 0;
+}
+
+static uint8_t do_NEW_Ext_Prm_Data(void)
+{
+  return 0;
+}
+
+
+static uint8_t do_DXB_Out(void)
+{
+  return 0;
+}
+
+static uint8_t do_NEW_GC_COMMAND(void)
+{
+  return 0;
+}
+
+
+static uint8_t do_NEW_SSA_DATA(void)
+{
+  return 0;
+}
+
+
+#warning Эта функция по факту в техасе вроде как не вызывалась. Проверить как вызывалась альтернативная функция.
+#warning Скорее всего ее нужно заменить на ту что по факту вызвалась в техасовском проекте
+static uint8_t do_Prm(void)
+{
+    uint8_t prmVal;
+    uint16_t regAddr;
+    uint16_t bufAddr;
+    uint8_t Aux[32];
+
+    // параметры сети Profibus DP
+    bufAddr = GET_DP_BUFFERS(Prm_Data[0]);
+    readVPC3(&prmVal, bufAddr, sizeof(prmVal));
+    //ExtPrm[0] = prmVal;
+
+    bufAddr = GET_DP_BUFFERS(Prm_Data[1]);
+    readVPC3(&prmVal, bufAddr, sizeof(prmVal));
+    //ExtPrm[1] = prmVal;
+    regAddr = GET_VPC_ADR(user_wd_value_1);
+    writeVPC3(regAddr, &prmVal, sizeof(prmVal));
+
+    bufAddr = GET_DP_BUFFERS(Prm_Data[2]);
+    readVPC3(&prmVal, bufAddr, sizeof(prmVal));
+    //ExtPrm[2] = prmVal;
+    regAddr = GET_VPC_ADR(user_wd_value_2);
+    writeVPC3(regAddr, &prmVal, sizeof(prmVal));
+
+    bufAddr = GET_DP_BUFFERS(Prm_Data[3]);
+    readVPC3(&prmVal, bufAddr, sizeof(prmVal));
+    //ExtPrm[3] = prmVal;
+    regAddr = GET_VPC_ADR(ctrl_reg.wr.mintsdr);
+    writeVPC3(regAddr, &prmVal, sizeof(prmVal));
+
+    bufAddr = GET_DP_BUFFERS(Prm_Data[4]);
+    readVPC3(&prmVal, bufAddr, sizeof(prmVal));
+   //ExtPrm[4] = prmVal;
+    bufAddr = GET_DP_BUFFERS(Prm_Data[5]);
+    readVPC3(&prmVal, bufAddr, sizeof(prmVal));
+    //ExtPrm[5] = prmVal;
+    bufAddr = GET_DP_BUFFERS(Prm_Data[6]);
+    readVPC3(&prmVal, bufAddr, sizeof(prmVal));
+    //ExtPrm[6] = prmVal;
+
+    bufAddr = GET_DP_BUFFERS(Prm_Data[7]);
+    readVPC3(&prmVal, bufAddr, sizeof(prmVal));
+    //ExtPrm[7] = prmVal;
+
+    bufAddr = GET_DP_BUFFERS(Prm_Data[8]);
+    readVPC3(&prmVal, bufAddr, sizeof(prmVal));
+    //ExtPrm[8] = prmVal;
+
+    bufAddr = GET_DP_BUFFERS(Prm_Data[9]);
+    readVPC3(&prmVal, bufAddr, sizeof(prmVal));
+    //ExtPrm[9] = prmVal;
+
+    bufAddr = GET_DP_BUFFERS(Aux_Buf1);
+    readVPC3(&Aux, bufAddr, 32);
+
+    regAddr = GET_VPC_ADR(ctrl_reg.rd.user_prm_data_ok);
+    readVPC3(&prmVal, regAddr, sizeof(prmVal));
+
+    return prmVal;
+}
+
+static uint8_t do_Cfg(void)
+{
+  return 0;  
+}
+
+#warning Эта функция по факту в техасе вроде как не вызывалась. Проверить как вызывалась альтернативная функция.
+#warning Скорее всего ее нужно заменить на ту что по факту вызвалась в техасовском проекте
+static uint8_t do_Diag(void)
+{
+  uint8_t Diag[LEN_DIAG_BUF];
+  uint8_t NDiag;
+  uint16_t regAddr;
+  uint16_t bufAddr;
+
+  uint8_t Aux[32];
+  bufAddr = GET_DP_BUFFERS(Aux_Buf1);
+  readVPC3(&Aux, bufAddr, 32);
+
+//------------выбор буфера для диагностики--------------------------
+  regAddr = GET_VPC_ADR(ctrl_reg.rd.diag_buffer_sm);
+  readVPC3(&NDiag, regAddr, sizeof(NDiag));
+
+//--------------формирование буфера диагностики---------------------
+  Diag[0] = 0x08;  // 0 байт (0 - Ext_Diag; 1 - Stat_Diag; 2 - Ext_Diag_Overf)
+  Diag[1] = 0x0C;
+  Diag[2] = 0x00;
+  Diag[3] = 0x02;
+  Diag[4] = IDENT1;
+  Diag[5] = IDENT0;
+  Diag[6] = 0x02;
+  Diag[7] = 0x01;
+
+  if ((NDiag &= 3)) {
+          bufAddr = GET_DP_BUFFERS(Diag_Buf1);
+  } else {
+          bufAddr = GET_DP_BUFFERS(Diag_Buf2);
+  };
+
+  writeVPC3(bufAddr, &Diag[0], 8);
+  //-------------изменить буфер диагностики------------------------
+  regAddr = GET_VPC_ADR(ctrl_reg.rd.new_diag_buf_cmd);
+
+  readVPC3(&NDiag, regAddr, sizeof(NDiag));
+
+  return NDiag;   
+}
+
+static uint8_t do_DX_OUT(void)
+{
+  return 0; 
+}
+
+static uint8_t do_Poll_End_Ind(void)
+{
+  return 0;
+}
+
+static uint8_t do_FDL_Inf(void)
+{
   return 0;
 }
