@@ -24,14 +24,21 @@ static uint8_t do_DXB_Out(void);
 static uint8_t do_Poll_End_Ind(void);
 static uint8_t do_FDL_Inf(void);
 
-/**
-  * @brief  Инициализация микросхемы VPC3+S
-  * @param slaveAddr: Адрес устройства. Параметр от верхнего уровня 
-  * @param  
-  * @retval
-  */
 
+uint16_t getOutputBufPnt(void);
+uint16_t getInputBufPnt(void);
 
+uint8_t cnfTelegramChecking(uint8_t *pToCfgData, uint8_t bCfgLength);
+DP_ERROR_CODE VPC3_CalculateInpOutpLength( uint8_t *pToCfgData, uint8_t bCfgLength);
+
+VPC3_SYSTEM_STRUC  sDpSystemChannel1;   /**< Глобальная структура управления протоколом. */
+
+VPC3_SYSTEM_STRUC *pDpSystem;
+
+uint8_t N_Din; // номер следующего выходного буфера для формирования данных к мастеру
+
+#warning Пока этот объект глобальный, может его нужно перенести в какой-то супер объект управления протоколом
+PzdiPzdo_Type PzdiPzdo;
 
 //Массив указателей на обработчики прерываний
 static uint8_t (*pHandlerProfi[])(void) = {
@@ -53,6 +60,12 @@ static uint8_t (*pHandlerProfi[])(void) = {
     do_FDL_Inf,
 };
 
+/**
+  * @brief  Инициализация микросхемы VPC3+S
+  * @param slaveAddr: Адрес устройства. Параметр от верхнего уровня 
+  * @param  
+  * @retval
+  */
 void initVPC3(uint16_t slaveAddr)
 {
 
@@ -63,7 +76,7 @@ void initVPC3(uint16_t slaveAddr)
   uint8_t prmVal;
   uint16_t regAddr;
 
-  //pDpSystem = &sDpSystemChannel1;
+  pDpSystem = &sDpSystemChannel1;
 
   //Переводим в состояние Offline
   prmVal = GO_OFFLINE;
@@ -493,21 +506,22 @@ void VPC3_InterruptProcessing(void)
     
 #warning тут скорее всего дичь. Во первых почему эти прерывания игнорируются, а во вторых тут возможна установка лишнего бита
     if (((intRequestReg & 0x0C00U) == NEW_PRM_DATA) || ((intRequestReg & 0x0C00) == NEW_CFG_DATA)) {
-            intRequestReg ^= NEW_CFG_DATA;
-            intRequestReg ^= NEW_PRM_DATA;
+      intRequestReg ^= NEW_CFG_DATA;
+      intRequestReg ^= NEW_PRM_DATA;
     }
 
+    /*Для каждого бита, установленного в слове запросов прерываний,
+      вызываем соответствующую функцию */
     i = 0;
-    while (intRequestReg) {
-      if (intRequestReg & (1 << i)) {
-        if (pHandlerProfi[i]) {
+    while(intRequestReg){
+      if(intRequestReg & (1 << i)){
+        if(pHandlerProfi[i]){
           pHandlerProfi[i]();
         }
       }
       intRequestReg &= ~(1 << i);
       i++;
     }
-
 }
 
 
@@ -659,8 +673,55 @@ static uint8_t do_Prm(void)
     return prmVal;
 }
 
+/**
+  * @brief  Обработка прерывания события Data_Exchange telegram
+  * @param  None
+  * @retval None
+  */
 static uint8_t do_Cfg(void)
 {
+  uint8_t len_cfg_data;
+  uint8_t prmVal;
+  uint8_t cnfCheckStatus;
+  uint16_t regAddr;
+  uint16_t buffAddr;
+  DP_ERROR_CODE calcDataLen;
+  uint8_t ok = 1;
+  uint8_t aFmt[LEN_CFG_BUF]; //массив конфигурационных данных 
+  
+  //Длина принятой телеграммы
+  regAddr = GET_VPC_ADR(r_len_cfg_data);
+  readVPC3(&len_cfg_data, regAddr, sizeof(len_cfg_data));
+  
+  buffAddr = GET_DP_BUFFERS(Cfg_Buf[0]);
+  readVPC3(&aFmt[0], buffAddr, len_cfg_data);                     //считывание массива конфигурационных данных
+  cnfCheckStatus = cnfTelegramChecking(&aFmt[0], len_cfg_data); //проверка конфигурационных данных на соответствие GSD
+  
+  if(!cnfCheckStatus){ //конф. телеграмма ок?
+    calcDataLen = VPC3_CalculateInpOutpLength( &aFmt[0], len_cfg_data ); //Расчет длины IO
+    if(calcDataLen == DP_OK){
+      regAddr = GET_VPC_ADR(len_dout_buf);
+
+      prmVal = pDpSystem->bOutputDataLength;
+      writeVPC3(regAddr, &prmVal, sizeof(uint8_t)); //Настройка
+
+      regAddr = GET_VPC_ADR(len_din_buf);
+      prmVal = pDpSystem->bInputDataLength;
+      writeVPC3(regAddr, &prmVal, sizeof(uint8_t)); //Настройка
+
+      prmVal = En_Change_Cfg_Puffer;
+      regAddr = GET_VPC_ADR(ctrl_reg.wr.mode_reg1_s);
+      writeVPC3(regAddr, &prmVal, sizeof(prmVal));
+
+      regAddr = GET_VPC_ADR(ctrl_reg.rd.new_din_buf_cmd);
+      readVPC3(&N_Din, regAddr, sizeof(N_Din));
+    }else{
+       ok = 0;
+    }
+  }else{
+     ok = 0;
+  }
+  
   return 0;  
 }
 
@@ -706,8 +767,94 @@ static uint8_t do_Diag(void)
   return NDiag;   
 }
 
+/**
+  * @brief  Обработка прерывания события Data_Exchange telegram
+  * @param  None
+  * @retval None
+  */
+#warning В техасовском проекте эта обработка вызывалась не в прерывании
+#warning Почему тут опрашиваются не запросы а флаги?
 static uint8_t do_DX_OUT(void)
 {
+  uint16_t pp1;
+  uint16_t regAddr;
+  uint16_t IR_Status;
+  uint16_t pToOutputBuffer;
+  uint16_t pToInputBuffer;
+  uint16_t cmpStatus;
+  uint16_t cmpAddrStatus;
+  uint16_t i, j;
+  uint16_t prmVal;
+  uint16_t PZDI[LEN_DIN_BUF];
+  uint8_t outputBuffer[LEN_DOUT_BUF];
+  static uint16_t prevPZDO[LEN_DOUT_BUF] = {0};
+  static uint16_t aPrevPZDOadr[LEN_DOUT_BUF] = {0}; //предыдущие адреса записываемых в привод параметров
+  uint16_t PZDO[DOUT_DATA_LENGTH];
+  uint32_t tempPZDI[DIN_DATA_LENGTH];
+  uint8_t DinCmd;
+  
+  regAddr = GET_VPC_ADR(isreg.rd.int_reg1);         //Текущие флаги прерываний
+  readVPC3(&IR_Status, regAddr, sizeof(IR_Status));  
+  
+  //Проверка флага прерывания по обмену данными
+  if(IR_Status & DX_OUT){
+    pToOutputBuffer = getOutputBufPnt(); //указатель на буфер с данными от ПЛК
+    if(pToOutputBuffer){
+      #warning Реализовать инициализацию pDpSystem->bOutputDataLength в конфигурационной телеграмме
+      readVPC3(&outputBuffer[0], pToOutputBuffer, pDpSystem->bOutputDataLength);
+      
+      for(i = 0, j = 0; j < pDpSystem->bOutputDataLength / 2; i = j * 2){
+        PZDO[j] = (outputBuffer[i] << 8) + outputBuffer[i + 1];
+        j++;
+      }
+      
+      cmpStatus = memcmp(&PZDO[0], &prevPZDO[0], pDpSystem->bOutputDataLength);
+      cmpAddrStatus = memcmp(&PzdiPzdo.PZDO.aPZDOadr[0], &aPrevPZDOadr[0], pDpSystem->bOutputDataLength); //проверка изменения адресов
+      
+      if((cmpStatus != 0) || (cmpAddrStatus != 0)){ //!если содержимое буфера изменилось или адрес изменился, пишем в систему параметров ПЧ
+        for(i = 0; i < pDpSystem->bOutputDataLength / 2; i++){
+          if( (PZDO[i] != prevPZDO[i]) || (PzdiPzdo.PZDO.aPZDOadr[i] != aPrevPZDOadr[i])){ //!пишем если значение параметра изменилось
+          #warning тут пишем данные в буфер который далее передается на врхний уровень
+          #warning Скорее всего этот цикл не нужен. Нужно просто передать данные на верхний уровен. Этот цикл нужен был только для проекта Техаса 
+          }
+        }
+        memcpy(&prevPZDO[0], &PZDO[0], pDpSystem->bOutputDataLength);
+        memcpy(&aPrevPZDOadr[0], &PzdiPzdo.PZDO.aPZDOadr[0], pDpSystem->bOutputDataLength);
+      }
+    }
+    
+    regAddr = GET_VPC_ADR(isreg.wr.int_ack2); //Квитируем прерывание получения телеграммы Data_Exchange telegram
+    prmVal = DX_OUT;
+    writeVPC3(regAddr, &prmVal, sizeof(prmVal)); //квитирование прерывания
+    
+    /*****************Считывание параметров из ПЧ в ПЛК*****************/
+    pToInputBuffer = getInputBufPnt(); //!адрес доступного буфера для отправки данных в ПЛК
+    if(pToInputBuffer){
+      
+#warning Следующий цикл не нужен. Он нужен был в техасе. Нужно просто отправлять принятые от CP24 данные
+      for(i = 0; i < pDpSystem->bInputDataLength / 2; i++){ //формируем массив из системы параметров ПЧ
+        //read_PKW(PzdiPzdo.PZDI.aPZDIadr[i], &tempPZDI[i], &pp1); //массив для отправки в ПЛК
+      }
+
+#warning Этот цикл тоже не нужен
+      /**Значение из s32 в u16***/
+      for(i = 0; i < pDpSystem->bInputDataLength / 2; i++){
+        PZDI[i] = (uint16_t)tempPZDI[i]; //массив для отправки в ПЛК тип u16
+      }
+
+      #warning Зачем swap?
+      for(i = 0; i < pDpSystem->bInputDataLength / 2; i++){
+        PZDI[i] = (PZDI[i] << 8) | ((uint16_t)0x00FF & (PZDI[i] >> 8));
+      }
+
+      writeVPC3(pToInputBuffer, &PZDI[0], pDpSystem->bInputDataLength); //запись значений параметров в буфер для отправки в ПЛК
+
+      regAddr = GET_VPC_ADR(ctrl_reg.rd.new_din_buf_cmd); //09h - регистр, считывание которого делает буфер доступным для отправки в ПЛК
+      readVPC3(&DinCmd, regAddr, sizeof(uint8_t));
+    }
+    
+  }
+  
   return 0; 
 }
 
@@ -720,3 +867,203 @@ static uint8_t do_FDL_Inf(void)
 {
   return 0;
 }
+
+/**
+  * @brief  Получение указателя на буфер с данными
+  * @param  
+  * @retval Указатель на буфер с полученными от ПЛК данными
+  */
+uint16_t getOutputBufPnt(void){
+  uint16_t pToOutputBuffer;
+  uint16_t regAddr;
+  uint8_t DoutSegAddr;
+  uint8_t U_BufferAssignment; //текущий номер указателя на буфер данных
+
+  regAddr = GET_VPC_ADR(ctrl_reg.rd.dout_buffer_sm);
+  readVPC3(&U_BufferAssignment, regAddr, sizeof(U_BufferAssignment));
+
+  //Проверяем какой из регистров содержит адрес буфера с данными
+  switch(U_BufferAssignment & 0x30){
+  case 0x10: //dout_buf_ptr_1
+          regAddr = GET_VPC_ADR(dout_buf_ptr_1); //адрес регистра с сегементным адресом буфера 1
+          readVPC3(&DoutSegAddr, regAddr, sizeof(uint8_t));
+          pToOutputBuffer = DoutSegAddr << 3;   //Переводим адрес сегмента в абсолютный адрес
+          break;
+  case 0x20: //dout_buf_ptr_2
+          regAddr = GET_VPC_ADR(dout_buf_ptr_2); //адрес параметра с указателем на буфер 2
+          readVPC3(&DoutSegAddr, regAddr, sizeof(uint8_t));
+          pToOutputBuffer = DoutSegAddr << 3;
+          break;
+  case 0x30: //dout_buf_ptr_3
+          regAddr = GET_VPC_ADR(dout_buf_ptr_3); //адрес параметра с указателем на буфер 3
+          readVPC3(&DoutSegAddr, regAddr, sizeof(uint8_t));
+          pToOutputBuffer = DoutSegAddr << 3;
+          break;
+  default:
+          pToOutputBuffer = VPC3_NULL_PTR;
+          break;
+  }
+
+  return(pToOutputBuffer);
+}
+
+
+/**
+  * @brief  Получение указателя на буфер для отправки данных в ПЛК
+  * @param  
+  * @retval Указатель на буфер куда можно писать данные для отправки в ПЛК
+  */
+uint16_t getInputBufPnt(void){
+  uint8_t  U_BufferAssignment; //текущий номер указателя на буфер данных
+  uint8_t DinSegAddr;
+  uint16_t regAddr;
+  uint16_t pToInputBuffer;
+
+  regAddr = GET_VPC_ADR(ctrl_reg.rd.din_buffer_sm);           //
+  readVPC3(&U_BufferAssignment, regAddr, sizeof(U_BufferAssignment)); //Номер текущего доступного пользователю буфера
+
+  switch(U_BufferAssignment & 0x30){
+  case 0x10:
+          regAddr = GET_VPC_ADR(din_buf_ptr_1);            //Адрес параметра с указателем на буфер 1
+          readVPC3(&DinSegAddr, regAddr, sizeof(uint8_t)); //Читаем адрес сегмента
+          pToInputBuffer = DinSegAddr << 3;                //Переводим адрес сегмента в абсолютный адрес
+          break;
+  case 0x20:
+          regAddr = GET_VPC_ADR(din_buf_ptr_2);            //адрес параметра с указателем на буфер 2
+          readVPC3(&DinSegAddr, regAddr, sizeof(uint8_t)); //Читаем адрес сегмента
+          pToInputBuffer = DinSegAddr << 3;                //Переводим адрес сегмента в абсолютный адрес
+          break;
+  case 0x30:
+          regAddr = GET_VPC_ADR(din_buf_ptr_3); //адрес параметра с указателем на буфер 3
+          readVPC3(&DinSegAddr, regAddr, sizeof(uint8_t));
+          pToInputBuffer = DinSegAddr << 3;
+          break;
+  default:
+          pToInputBuffer = VPC3_NULL_PTR;
+          break;
+  }
+  return(pToInputBuffer);
+}
+
+/**
+ * @fn - cnfTelegramChecking
+ * @brief - Проверка конфигурационных байт на соответствие GSD
+ * @param   - pToCfgData указатель на буфер с конфигурационными данными
+ * @param   - bCfgLength длина буфера
+ * @return  - 0 - если данные корректные, 1 - в противном случае
+ */
+uint8_t cnfTelegramChecking(uint8_t *pToCfgData, uint8_t bCfgLength){
+  if( ((pToCfgData[0] >> 4) == 0x0D) || ((pToCfgData[0] >> 4) == 0x0E) || ((pToCfgData[0] >> 4) == 0x05) || ((pToCfgData[0] >> 4) == 0x06) ){ //проверка соответствия конф. данных GSD-файлу
+          return(0);
+  }else{
+          return(1);
+  }
+}
+
+/**
+ * @fn    - VPC3_CalculateInpOutpLength
+ * @brief - Расчет длины входных/выходных данных по конфигурационной телеграмме
+ * @param - pToCfgData указатель на буфер с конфигурационными данными
+ * @param - bCfgLength длина буфера с конфигурационными данными
+ * @return  - DP_OK, если расчет ОК
+ * @return  - DP_CFG_LEN_ERROR, если некорректная длина конфигурационно телеграммы
+ * @return  - DP_CALCULATE_IO_ERROR, если ошибка длины входных/выходных данных
+ * @return  - DP_CFG_FORMAT_ERROR, ошибка в формате телеграммы
+ */
+DP_ERROR_CODE VPC3_CalculateInpOutpLength( uint8_t *pToCfgData, uint8_t bCfgLength)
+{
+   DP_ERROR_CODE bError;
+   uint8_t       bSpecificDataLength;
+   uint8_t       bTempOutputDataLength;
+   uint8_t       bTempInputDataLength;
+   uint8_t       bLength;
+   uint8_t       bCount;
+
+   bError = DP_OK;
+   bTempOutputDataLength = 0;
+   bTempInputDataLength  = 0;
+
+   if( (bCfgLength > 0) && (bCfgLength <= LEN_CFG_BUF) ){
+      for( ; bCfgLength > 0; bCfgLength -= bCount )
+      {
+         bCount = 0;
+
+         if( *pToCfgData & VPC3_CFG_IS_BYTE_FORMAT ) //биты 4 и 5 конфигурационного байта
+         {
+            /* general identifier format */
+            bCount++;
+            /* pToCfgData points to "Configurationbyte", CFG_BF means "CFG_IS_BYTE_FORMAT" */
+            bLength = (uint8_t)( ( *pToCfgData & VPC3_CFG_BF_LENGTH) + 1 ); //длина данных
+
+            if( *pToCfgData & VPC3_CFG_BF_OUTP_EXIST ) //если телеграмма касается выходных данных
+            {
+               bTempOutputDataLength += ( *pToCfgData & VPC3_CFG_LENGTH_IS_WORD_FORMAT ) ? ( 2 * bLength ) : bLength; //байт или слово
+            } /* if( *pToCfgData & VPC3_CFG_BF_OUTP_EXIST ) */
+
+            if( *pToCfgData & VPC3_CFG_BF_INP_EXIST ) //если телеграмма касается входных данных
+            {
+               bTempInputDataLength += ( *pToCfgData & VPC3_CFG_LENGTH_IS_WORD_FORMAT ) ? ( 2 * bLength ) : bLength; //байт или слово
+            } /* if( *pToCfgData & VPC3_CFG_BF_INP_EXIST ) */
+
+            pToCfgData++;
+         } /* if( *pToCfgData & VPC3_CFG_IS_BYTE_FORMAT ) */
+         else
+         {
+            /* pToCfgData points to the headerbyte of "special identifier format */
+            /* CFG_SF means "CFG_IS_SPECIAL_FORMAT" */
+            if( *pToCfgData & VPC3_CFG_SF_OUTP_EXIST )
+            {
+               bCount++;    /* next byte contains the length of outp_data */
+               bLength = (uint8_t)( ( *( pToCfgData + bCount ) & VPC3_CFG_SF_LENGTH ) + 1 );
+
+               bTempOutputDataLength += ( *( pToCfgData + bCount ) & VPC3_CFG_LENGTH_IS_WORD_FORMAT ) ? ( 2 * bLength ) : bLength;
+            } /* if( *pToCfgData & VPC3_CFG_SF_OUTP_EXIST ) */
+
+            if( *pToCfgData & VPC3_CFG_SF_INP_EXIST )
+            {
+               bCount++;  /* next byte contains the length of inp_data */
+               bLength = (uint8_t)( ( *( pToCfgData + bCount ) & VPC3_CFG_SF_LENGTH ) + 1 );
+
+               bTempInputDataLength += ( *( pToCfgData + bCount ) & VPC3_CFG_LENGTH_IS_WORD_FORMAT ) ? ( 2 * bLength ) : bLength;
+            } /* if( *pToCfgData & VPC3_CFG_SF_INP_EXIST ) */
+
+            bSpecificDataLength = (uint8_t)( *pToCfgData & VPC3_CFG_BF_LENGTH );
+
+            if( bSpecificDataLength != 15 )
+            {
+               bCount = (uint8_t)( bCount + 1 + bSpecificDataLength );
+               pToCfgData = pToCfgData + bCount;
+            } /* if( bSpecificDataLength != 15 ) */
+            else
+            {
+               /* specific data length = 15 not allowed */
+               pDpSystem->bInputDataLength  = 0xFF;
+               pDpSystem->bOutputDataLength = 0xFF;
+               bError = DP_CFG_FORMAT_ERROR;
+            } /* else of if( bSpecificDataLength != 15 ) */
+         } /* else of if( *pToCfgData & VPC3_CFG_IS_BYTE_FORMAT ) */
+      } /* for( ; bCfgLength > 0; bCfgLength -= bCount ) */
+
+      if( ( bCfgLength != 0 ) || ( bTempInputDataLength > LEN_DIN_BUF ) || ( bTempOutputDataLength > LEN_DOUT_BUF ) ) //а может быть и меньше???
+      {
+         pDpSystem->bInputDataLength  = 0xFF;
+         pDpSystem->bOutputDataLength = 0xFF;
+
+         bError = DP_CALCULATE_IO_ERROR;
+      } /* if( ( bCfgLength != 0 ) || ( bTempInputDataLength > DIN_BUFSIZE ) || ( bTempOutputDataLength > DOUT_BUFSIZE ) ) */
+      else
+      {
+         pDpSystem->bInputDataLength  = bTempInputDataLength;
+         pDpSystem->bOutputDataLength = bTempOutputDataLength;
+         bError = DP_OK;
+      } /* else of if( ( bCfgLength != 0 ) || ( bTempInputDataLength > DIN_BUFSIZE ) || ( bTempOutputDataLength > DOUT_BUFSIZE ) ) */
+   } /* if( ( bCfgLength > 0 ) && ( bCfgLength <= CFG_BUFSIZE ) ) */
+   else //некорректная длина конфигурационных данных:
+   {
+      pDpSystem->bInputDataLength  = 0xFF;
+      pDpSystem->bOutputDataLength = 0xFF;
+      bError = DP_CFG_LEN_ERROR;
+   } /* else of if( ( bCfgLength > 0 ) && ( bCfgLength <= CFG_BUFSIZE ) ) */
+
+   return bError;
+} /* DP_ERROR_CODE VPC3_CalculateInpOutpLength( MEM_UNSIGNED8_PTR pToCfgData, uint8_t bCfgLength ) */

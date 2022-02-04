@@ -7,13 +7,17 @@
 #define WRITE_ARRAY_INSTRUCTION 0x02
 
 
-#define MAX_DOUT_BUF 20
-#define MAX_DIN_BUF 20
+#define MAX_DOUT_BUF 14
+#define MAX_DIN_BUF 14
+
+#warning Эти два значения всегда в 2 раза меньше значений MAX_DOUT_BUF и MAX_DIN_BUF??
+#define DOUT_DATA_LENGTH 7
+#define DIN_DATA_LENGTH 7
 
 #define VPC3_ASIC_ADDRESS           (VPC3_STRUC *)0x4000
 #define DP_ORG_LENGTH               0x40 // organizational parameter
-#define SAP_LENGTH                  0x10
-#define DP_VPC3_4KB_MODE
+//#define SAP_LENGTH                  0x10
+
 #ifdef DP_VPC3_4KB_MODE
     #define ASIC_RAM_LENGTH         0x1000
     #define ASIC_USER_RAM           (ASIC_RAM_LENGTH - DP_ORG_LENGTH - SAP_LENGTH)
@@ -21,7 +25,8 @@
     #define SEG_ADDWORD             ((u8)0xFFF0)
 #else
     #define ASIC_RAM_LENGTH         0x800
-    #define ASIC_USER_RAM           (ASIC_RAM_LENGTH - DP_ORG_LENGTH - SAP_LENGTH)
+    //#define ASIC_USER_RAM           (ASIC_RAM_LENGTH - DP_ORG_LENGTH - SAP_LENGTH)
+    #define ASIC_USER_RAM           (ASIC_RAM_LENGTH - DP_ORG_LENGTH)
 #endif
 
 
@@ -56,17 +61,91 @@
 #define VPC3_DIAG_FLAG          0x04
 
 
-#define LEN_DOUT_BUF            14
-#define LEN_DIN_BUF             14
-#define LEN_DIAG_BUF            6           //7 system + 1user
+#define LEN_DOUT_BUF            0x20
+#define LEN_DIN_BUF             0x20
+#define LEN_DIAG_BUF            0x20    
 #define LEN_CNTRL_BUF           31
 #define LEN_SSA_DATA            5           //
 #define LEN_PRM_DATA            10         //7 system + 8user
-#define LEN_CFG_BUF             16
+#define LEN_CFG_BUF             /*16*/0x20
 
 
 #define IDENT1                  0xAF
 #define IDENT0                  0xFD
+
+
+#define VPC3_NULL_PTR 0
+
+// регистр причины прерывания
+#define MAC_RESET               0x01    //;0 the SPC3 has arrived at the offline (through  setting the 'Go_Offline bit' or through a RAM access violation)
+#define GO_LEAVE_DATA_EX        0x02    //;1 The DP_SM has entered or exited the 'DATA_EX' state
+#define BAUDRATE_RETECT         0x04    //;2 The SPC3 has exited the 'Baud_Search state' and found a baud rate. 
+#define WD_DP_MODE_TIMEOUT      0x08    //;3 The watchdog timer has run out in the 'DP_Control' WD state.
+#define USER_TIMER_CLOCK        0x10    //;4 The time base for the User_Timer_Clocks has run out (1/10ms). 
+
+
+#define NEW_GC_COMMAND          ((uint16_t)1 << 8)    //8 The SPC3 has received a 'Global_Control telegram' with a changed 'GC_Command-Byte,' and this byte is stored in the 'R_GC_Command' RAM cell.
+#define NEW_SSA_DATA            ((uint16_t)1 << 9)    //9 The SPC3 has received a 'Set_Slave_Address telegram' and made the data available in the SSA buffer.
+#define NEW_CFG_DATA            ((uint16_t)1 << 10)   //10 The SPC3 has received a 'Check_Cfg telegram' and made the data available in the Cfg buffer.
+#define NEW_PRM_DATA            ((uint16_t)1 << 11)   //11 The SPC3 has received a 'Set_Param telegram' and made the data available in the Prm buffer.
+#define DIAG_BUFFER_CHANGED     ((uint16_t)1 << 12)   //12 Due to the request made by 'New_Diag_Cmd,' SPC3 exchanged the diagnostics buffer and again made the old buffer available to the user.
+#define DX_OUT                  ((uint16_t)1 << 13)   //13 The SPC3 has received a 'Write_Read_Data telegram' and made the new output data
+                                                      //available in the N buffer. For a 'Power_On' or for a 'Leave_Master,' the SPC3 deletes
+
+typedef enum
+{
+   DPV0_MODE           = ((uint8_t)0x00),
+   DPV1_MODE           = ((uint8_t)0x01)
+} DP_OPMODE;
+
+typedef struct
+{
+   uint8_t                 eDpState;
+   uint16_t                wEvent;
+
+   uint16_t                wInterruptEvent;
+   uint16_t                wPollInterruptEvent;
+   uint16_t                wPollInterruptMask;
+   uint16_t                wOldDiag;
+   uint8_t                 bDiagSeqCounter;
+   uint8_t                 bOldGlobalControl;
+   uint8_t                 abUserDiagnostic[LEN_DIAG_BUF];
+   uint8_t                 abPrmCfgSsaHelpBuffer[LEN_CFG_BUF];
+   DP_OPMODE               eDPV1;
+
+   uint8_t                 bOutputDataLength;                  /* calculated output length (data from DP-Master to VPC3) */
+   uint8_t                 bInputDataLength;                   /* calculated input length  (data from VPC3 to DP-Master) */
+   uint16_t                wVpc3UsedDPV0BufferMemory;          /* consumed user_memory */
+   uint16_t                wVpc3UsedDPV1BufferMemory;          /* consumed user_memory */
+
+   uint8_t                 bIntIndHigh;                        /* interrupt indication high byte */
+   uint8_t                 bIntIndLow;                         /* interrupt indication low byte */
+
+   uint8_t                 bDinBufsize;                        /*!< Length of the 3 Din buffers (dp_cfg.h:\ref DIN_BUFSIZE).            */
+   uint8_t                 bDoutBufsize;                       /*!< Length of the 3 Dout buffers (dp_cfg.h:\ref DOUT_BUFSIZE).          */
+   uint8_t                 bPrmBufsize;                        /*!< Length of the Set_Param buffer (dp_cfg.h:\ref PRM_BUFSIZE).         */
+   uint8_t                 bDiagBufsize;                       /*!< Length of the 2 Diag buffer (dp_cfg.h:\ref DIAG_BUFSIZE).           */
+   uint8_t                 bCfgBufsize;                        /*!< Length of the 2 Config buffer (dp_cfg.h:\ref CFG_BUFSIZE).          */
+   uint8_t                 bSsaBufsize;                        /*!< Length of the Set_Slave_Address-buffer (dp_cfg.h:\ref SSA_BUFSIZE). */
+
+   uint16_t                wAsicUserRam;
+
+   uint8_t                *pDoutBuffer1;                       /*!< microprocessor formatted pointer to Dout buffer 1.*/
+   uint8_t                *pDoutBuffer2;                       /*!< microprocessor formatted pointer to Dout buffer 2.*/
+   uint8_t                *pDoutBuffer3;                       /*!< microprocessor formatted pointer to Dout buffer 3.*/
+
+   uint8_t                *pDinBuffer1;                        /*!< microprocessor formatted pointer to Din buffer 1.*/
+   uint8_t                *pDinBuffer2;                        /*!< microprocessor formatted pointer to Din buffer 2.*/
+   uint8_t                *pDinBuffer3;                        /*!< microprocessor formatted pointer to Din buffer 3.*/
+
+   uint8_t                *pDiagBuffer1;                       /*!< microprocessor formatted pointer to Diag buffer 1.*/
+   uint8_t                *pDiagBuffer2;                       /*!< microprocessor formatted pointer to Diag buffer 2.*/
+
+
+   uint8_t                *pDiagBuffer;                        /*!< microprocessor formatted pointer to current diagnostic buffer.*/
+} VPC3_SYSTEM_STRUC;
+
+extern VPC3_SYSTEM_STRUC *pDpSystem;          /* глобальная структура управления profibus */                                                      // the N buffer and also generates this interrupt.
 
 typedef struct
 {
@@ -232,12 +311,12 @@ typedef struct{
     uint8_t    	   Prm_Data[0x20];
     uint8_t   	   Cfg_Buf[0x20];
     uint8_t 	   Read_Cfg_Buf[0x20];
-    uint8_t        Dout_Buf1[0x20];
-    uint8_t	   Dout_Buf2[0x20];
-    uint8_t	   Dout_Buf3[0x20];
-    uint8_t 	   Din_Buf1[0x20];
-    uint8_t	   Din_Buf2[0x20];
-    uint8_t        Din_Buf3[0x20];
+    uint8_t        Dout_Buf1[LEN_DOUT_BUF];
+    uint8_t	   Dout_Buf2[LEN_DOUT_BUF];
+    uint8_t	   Dout_Buf3[LEN_DOUT_BUF];
+    uint8_t 	   Din_Buf1[LEN_DIN_BUF];
+    uint8_t	   Din_Buf2[LEN_DIN_BUF];
+    uint8_t        Din_Buf3[LEN_DIN_BUF];
     SAP_list_type  SAP_List;
     SAP_buf_type   Ind_Buff0;
     SAP_buf_type   Res_Buff0;
@@ -254,6 +333,122 @@ uint16_t writeVPC3(uint16_t regAddr, const void *pTxVal, uint32_t sz);
 uint16_t readVPC3(void *pRxVal, uint16_t regAddr, uint32_t sz);
 
 
+typedef struct{
+  union{
+    struct{
+      uint16_t  PZDIadr1;
+      uint16_t  PZDIadr2;
+      uint16_t  PZDIadr3;
+      uint16_t  PZDIadr4;
+      uint16_t  PZDIadr5;
+      uint16_t  PZDIadr6;
+      uint16_t  PZDIadr7;
+    } word;
+    uint16_t aPZDIadr[7];
+  }PZDI;
+
+  union{
+    struct{
+      uint16_t  PZDOadr1;
+      uint16_t  PZDOadr2;
+      uint16_t  PZDOadr3;
+      uint16_t  PZDOadr4;
+      uint16_t  PZDOadr5;
+      uint16_t  PZDOadr6;
+      uint16_t  PZDOadr7;
+    } word;
+    uint16_t aPZDOadr[7];
+  }PZDO;
+}PzdiPzdo_Type;
+
+
+typedef enum
+{
+   DP_FATAL_ERROR                      = 0x00, /* fatal error */
+
+   DP_OK                               = 0x01, /* OK */
+   DP_NOK                              = 0x02, /* OK */
+
+   DP_NOT_OFFLINE_ERROR                = 0x10, /* VPC3 is not in OFFLINE state */
+   DP_ADDRESS_ERROR                    = 0x11, /* Slave Address Error */
+   DP_CALCULATE_IO_ERROR               = 0x12,
+   DP_DOUT_LEN_ERROR                   = 0x13,
+   DP_DIN_LEN_ERROR                    = 0x14,
+   DP_DIAG_LEN_ERROR                   = 0x15,
+   DP_PRM_LEN_ERROR                    = 0x16,
+   DP_SSA_LEN_ERROR                    = 0x17,
+   DP_CFG_LEN_ERROR                    = 0x18,
+   DP_CFG_FORMAT_ERROR                 = 0x19,
+   DP_LESS_MEM_ERROR                   = 0x1A,
+   DP_LESS_MEM_FDL_ERROR               = 0x1B,
+   DP_PRM_RETRY_ERROR                  = 0x1C,
+   DP_SPEC_PRM_NOT_SUPP_ERROR          = 0x1D,
+
+   DP_PRM_ENTRY_ERROR                  = 0x20,
+   DP_PRM_SERVICE_NOT_SUPPORTED        = 0x21,
+   DP_PRM_DPV1_STATUS                  = 0x22,
+   DP_PRM_DPV0_NOT_SUPP                = 0x23,
+   DP_PRM_DPV1_NOT_SUPP                = 0x24,
+   DP_PRM_BLOCK_ERROR                  = 0x25,
+   DP_PRM_BLOCK_CMD_NOT_SUPP           = 0x26,
+   DP_PRM_ALARM_ERROR                  = 0x27,
+   DP_PRMCMD_LEN_ERROR                 = 0x28,
+   DP_PRM_SOLL_IST_ERROR               = 0x29,
+
+   DP_PRM_USER_PRM_BLOCK_ERROR         = 0x2A,
+
+   DP_PRM_DXB_PRM_BLOCK_LENGTH_ERROR   = 0x2B,
+   DP_PRM_DXB_MAX_LINK_ERROR           = 0x2C,
+   DP_PRM_DXB_ERROR                    = 0x2D,
+   DP_PRM_DXB_WD_ERROR                 = 0x2E,
+
+   DP_PRM_CS_LENGTH_ERROR              = 0x30,
+   DP_PRM_CS_INTERVAL_ERROR            = 0x31,
+
+   DP_PRM_ISO_PRM_BLOCK_ERROR          = 0x40,
+   DP_PRM_DPV1_STATUS_3_ISOM_REQ_ERROR = 0x41,
+   DP_PRM_ISO_T_BASE_DP_ERROR          = 0x42,
+   DP_PRM_ISO_T_BASE_IO_ERROR          = 0x43,
+
+   DP_PRM_UNKNOWN_MOD_REF              = 0x4A,
+
+   DP_CFG_ENTRY_ERROR                  = 0x50,
+   DP_CFG_UPDATE_ERROR                 = 0x51,
+
+   DP_DIAG_BUFFER_ERROR                = 0x60,
+   DP_DIAG_SEQUENCE_ERROR              = 0x61,
+   DP_DIAG_OLD_DIAG_NOT_SEND_ERROR     = 0x62,
+   DP_DIAG_NOT_POSSIBLE_ERROR          = 0x63,
+   DP_DIAG_NO_BUFFER_ERROR             = 0x64,
+   DP_DIAG_BUFFER_LENGTH_ERROR         = 0x65,
+   DP_DIAG_CONTROL_BYTE_ERROR          = 0x66,
+   DP_DIAG_SAME_DIAG                   = 0x67,
+   DP_DIAG_ACTIVE_DIAG                 = 0x68,
+
+   C1_DATA_LEN_ERROR                   = 0x70,
+
+   C2_DATA_LEN_ERROR                   = 0x80,
+   C2_DATA_POLL_TIMEOUT_ERROR          = 0x81,
+   C2_DATA_SAP_ERROR                   = 0x82,
+   C2_NO_CONN_RESOURCE                 = 0x83,
+   C2_INV_LOWER_LAYER                  = 0x84,
+   C2_ENABLED_ERROR                    = 0x85,
+   C2_RESOURCE_ERROR                   = 0x86,
+   C2_INV_CN_ID                        = 0x87,
+   C2_USER_ERR                         = 0x88,
+   C2_DOUBLE_REQUEST                   = 0x89,
+   C2_ALREADY_DISCONNECTED             = 0x8A,
+
+   SSC_MAX_DATA_PER_LINK               = 0x90,
+
+   DP_EEPROM_ERROR                     = 0xF1, /* Hardware errors */
+   DP_VPC3_ERROR                       = 0xF4,
+   DP_SRAM_ERROR                       = 0xFF
+
+} DP_ERROR_CODE;
+
+#define En_Change_Cfg_Puffer    0x10    //Enabling buffer exchange (Cfg buffer for Read_Cfg buffer) 0 = With 'User_Cfg_Data_Okay_Cmd,' the Cfg buffer may not be exchanged for the Read_Cfg buffer.
+
 //Маски для проверки статуса прерываний по получению конфигурационной и параметризирующей телеграмм
 #define NEW_CFG_DATA ((uint16_t)(1 << 10))
 #define NEW_PRM_DATA ((uint16_t)(1 << 11))
@@ -261,5 +456,18 @@ uint16_t readVPC3(void *pRxVal, uint16_t regAddr, uint32_t sz);
 #define START_VPC3   0x01    //Exiting the Offline state 1 = VPC3 exits Offline and goes to passiv-idle addition, the idle timer and Wd timer are started and 'Go_Offline = 0' is set.
 #define MASK_DP_STATE ((uint8_t)0x30)
 #define DATA_EX       ((uint8_t)0x20)
+
+/*---------------------------------------------------------------------------*/
+/* 3.3 literals for cfg-bytes                                                */
+/*---------------------------------------------------------------------------*/
+#define VPC3_CFG_IS_BYTE_FORMAT           ((uint8_t)0x30)
+#define VPC3_CFG_BF_LENGTH                ((uint8_t)0x0F)
+#define VPC3_CFG_LENGTH_IS_WORD_FORMAT    ((uint8_t)0x40)
+#define VPC3_CFG_BF_INP_EXIST             ((uint8_t)0x10)
+#define VPC3_CFG_BF_OUTP_EXIST            ((uint8_t)0x20)
+#define VPC3_CFG_SF_OUTP_EXIST            ((uint8_t)0x80)
+#define VPC3_CFG_SF_INP_EXIST             ((uint8_t)0x40)
+#define VPC3_CFG_SF_LENGTH                ((uint8_t)0x3F)
+
 
 #endif //__VPC3_H
