@@ -42,22 +42,22 @@ PzdiPzdo_Type PzdiPzdo;
 
 //Массив указателей на обработчики прерываний
 static uint8_t (*pHandlerProfi[])(void) = {
-    do_MAC_Reset,
-    do_GO_LEAVE_DATA_EX,
-    do_Baudrate_Detect,
-    do_WD_DP_MODE_TIMEOUT,
-    do_User_Timer_Clock,
-    do_DXB_Link_Error,
-    do_NEW_Ext_Prm_Data,
-    do_DXB_Out,
-    do_NEW_GC_COMMAND,
-    do_NEW_SSA_DATA,
-    do_Prm,
-    do_Cfg,
-    do_Diag,
-    do_DX_OUT,
-    do_Poll_End_Ind,
-    do_FDL_Inf,
+    do_MAC_Reset/*0*/,
+    do_GO_LEAVE_DATA_EX/*1*/,
+    do_Baudrate_Detect/*2*/,
+    do_WD_DP_MODE_TIMEOUT/*3*/,
+    do_User_Timer_Clock/*4*/,
+    do_DXB_Link_Error/*5*/,
+    do_NEW_Ext_Prm_Data/*6*/,
+    do_DXB_Out/*7*/,
+    do_NEW_GC_COMMAND/*8*/,
+    do_NEW_SSA_DATA/*9*/,
+    do_Cfg/*10*/,
+    do_Prm/*11*/,
+    do_Diag/*12*/,
+    do_DX_OUT/*13*/,
+    do_Poll_End_Ind/*14*/,
+    do_FDL_Inf/*15*/,
 };
 
 /**
@@ -674,7 +674,7 @@ static uint8_t do_Prm(void)
 }
 
 /**
-  * @brief  Обработка прерывания события Data_Exchange telegram
+  * @brief  Обработка прерывания события конфигурации
   * @param  None
   * @retval None
   */
@@ -690,11 +690,11 @@ static uint8_t do_Cfg(void)
   uint8_t aFmt[LEN_CFG_BUF]; //массив конфигурационных данных 
   
   //Длина принятой телеграммы
-  regAddr = GET_VPC_ADR(r_len_cfg_data);
-  readVPC3(&len_cfg_data, regAddr, sizeof(len_cfg_data));
+  regAddr = GET_VPC_ADR(r_len_cfg_data);                  //Адрес регистра с длиной конфигурационной телеграммы
+  readVPC3(&len_cfg_data, regAddr, sizeof(len_cfg_data)); //Читаем длину кофигурационной телеграммы
   
   buffAddr = GET_DP_BUFFERS(Cfg_Buf[0]);
-  readVPC3(&aFmt[0], buffAddr, len_cfg_data);                     //считывание массива конфигурационных данных
+  readVPC3(&aFmt[0], buffAddr, len_cfg_data);                   //считывание массива конфигурационных данных
   cnfCheckStatus = cnfTelegramChecking(&aFmt[0], len_cfg_data); //проверка конфигурационных данных на соответствие GSD
   
   if(!cnfCheckStatus){ //конф. телеграмма ок?

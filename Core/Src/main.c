@@ -66,8 +66,11 @@ void SystemClock_Config(void);
 int main(void)
 {
   uint16_t addr;
+  uint16_t addr2;
   uint16_t regVal;
   uint16_t VPC3_Status;
+  uint16_t boudrateStatus;
+  uint16_t interuptStatus;
   
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -85,13 +88,27 @@ int main(void)
   MX_USART1_UART_Init();
   
   #warning После реализации связи по UART вызвать initVPC3 при получении profibus-адреса
-  initVPC3(3);
+  initVPC3(1);
 
   while (1)
   {
     addr = GET_VPC_ADR(isreg.rd.status_L);
     readVPC3(&regVal, addr, sizeof(regVal));
-    VPC3_Status = regVal;
+    boudrateStatus = (regVal >> 8) & 0x0F;
+    
+    if(boudrateStatus != 0x0F){
+      boudrateStatus++;
+      boudrateStatus--;
+    }
+    
+    
+    /*****Текущие запросы прерываний***/
+    addr2 = GET_VPC_ADR(int_req1);
+    readVPC3(&interuptStatus, addr2, sizeof(interuptStatus));
+    if(interuptStatus != 12304U){
+      interuptStatus++;
+      interuptStatus--;
+    }
   }
 }
 
