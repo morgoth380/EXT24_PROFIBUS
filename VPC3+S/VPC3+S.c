@@ -93,18 +93,18 @@ void initVPC3(uint16_t slaveAddr)
   writeVPC3(regAddr, &prmVal, sizeof(prmVal));
   
   //Разрешение прерывания от User timer clock
-  prmVal = USER_TIMER_CLOCK;
-  regAddr = GET_VPC_ADR(isreg.wr.int_mask_L);
+  prmVal = USER_TIMER_CLOCK | BAUDRATE_RETECT;
+  regAddr = GET_VPC_ADR(isreg.wr.int_mask_L); //0x04
   writeVPC3(regAddr, &prmVal, sizeof(prmVal));
 
   //Остальные прерывания пока запрещаем
   prmVal = 0;
-  regAddr = GET_VPC_ADR(isreg.wr.int_mask_H);
+  regAddr = GET_VPC_ADR(isreg.wr.int_mask_H); //0x05
   writeVPC3(regAddr, &prmVal, sizeof(prmVal));
 
   //Поддержка режимов SYNC и FREEZE
   #warning Вероятно, что поддержка этих режимов должна управляться параметром
-  prmVal = (SYNC_SUPPORTED + FREEZE_SUPPORTED);
+  prmVal = (SYNC_SUPPORTED + FREEZE_SUPPORTED) + INT_POL;
   regAddr = GET_VPC_ADR(mode_reg0_L);
   writeVPC3(regAddr, &prmVal, sizeof(prmVal));
 
@@ -401,7 +401,8 @@ void initVPC3(uint16_t slaveAddr)
   regAddr = GET_VPC_ADR(ident_high);
   writeVPC3(regAddr, &prmVal, sizeof(prmVal));
 
-  prmVal = 0x1E;
+#warning определиться с временем контроля
+  prmVal = /*0x1E*/0xFF;
   regAddr = GET_VPC_ADR(ctrl_reg.wr.wd_baud_ctrl);
   writeVPC3(regAddr, &prmVal, sizeof(prmVal));
 
@@ -424,9 +425,17 @@ void initVPC3(uint16_t slaveAddr)
   regAddr = GET_VPC_ADR(ctrl_reg.rd.new_diag_buf_cmd); 
   readVPC3(&N_Diag, regAddr, sizeof(N_Diag));
 
+  //Отладка - До перевода VPC3 в работу проверим статус VPC3
+  regAddr = GET_VPC_ADR(isreg.rd.status_L);
+  readVPC3(&prmVal, regAddr, sizeof(prmVal));
+  
   prmVal = START_SPC3;
   regAddr = GET_VPC_ADR(ctrl_reg.wr.mode_reg1_s); //Старт модуля. Переход из состояния Offline state в Passive_Idle (ожидание приема от мастера)
   writeVPC3(regAddr, &prmVal, sizeof(prmVal));
+  
+  //Отладка - Сразу проверяем состояние VPC3
+  regAddr = GET_VPC_ADR(isreg.rd.status_L);
+  readVPC3(&prmVal, regAddr, sizeof(prmVal));  
 }
 
 
@@ -496,14 +505,22 @@ uint16_t readVPC3(void *pRxVal, uint16_t regAddr, uint32_t sz)
   */
 void VPC3_InterruptProcessing(void)
 {
-    uint16_t intRequestRegAddr;
+    uint16_t regAddr;
     uint16_t intRequestReg = 0;
+    uint16_t intReg = 0;
     uint16_t i;
 
-    //Считываем слово текущих запросов прерываний
-    intRequestRegAddr = GET_VPC_ADR(int_req1);
-    readVPC3(&intRequestReg, intRequestRegAddr, sizeof(intRequestReg));
     
+    //Считываем слово текущих запросов прерываний
+    regAddr = GET_VPC_ADR(int_req1);
+    readVPC3(&intRequestReg, regAddr, sizeof(intRequestReg));
+    
+    if((intRequestReg & (1 << 2)) != 0){
+      intRequestReg++;
+      intRequestReg--;
+    }
+    
+   
 #warning тут скорее всего дичь. Во первых почему эти прерывания игнорируются, а во вторых тут возможна установка лишнего бита
     if (((intRequestReg & 0x0C00U) == NEW_PRM_DATA) || ((intRequestReg & 0x0C00) == NEW_CFG_DATA)) {
       intRequestReg ^= NEW_CFG_DATA;

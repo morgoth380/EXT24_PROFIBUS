@@ -92,23 +92,25 @@ int main(void)
 
   while (1)
   {
+    
     addr = GET_VPC_ADR(isreg.rd.status_L);
     readVPC3(&regVal, addr, sizeof(regVal));
     boudrateStatus = (regVal >> 8) & 0x0F;
     
-    if(boudrateStatus != 0x0F){
+    if(boudrateStatus != 0x09){
       boudrateStatus++;
       boudrateStatus--;
     }
     
-    
-    /*****Текущие запросы прерываний***/
+    /*
+    //Текущие запросы прерываний
     addr2 = GET_VPC_ADR(int_req1);
     readVPC3(&interuptStatus, addr2, sizeof(interuptStatus));
     if(interuptStatus != 12304U){
       interuptStatus++;
       interuptStatus--;
     }
+*/
   }
 }
 
