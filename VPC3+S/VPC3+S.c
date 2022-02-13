@@ -7,24 +7,6 @@
 #warning Определиться со временем!
 #define TIMEOUT_VAL 300
 
-static uint8_t do_MAC_Reset(void);
-static uint8_t do_GO_LEAVE_DATA_EX(void);
-static uint8_t do_Baudrate_Detect(void);
-static uint8_t do_WD_DP_MODE_TIMEOUT(void);
-static uint8_t do_User_Timer_Clock(void);
-static uint8_t do_NEW_GC_COMMAND(void);
-static uint8_t do_NEW_SSA_DATA(void);
-static uint8_t do_Prm(void);
-static uint8_t do_Cfg(void);
-static uint8_t do_Diag(void);
-static uint8_t do_DX_OUT(void);
-static uint8_t do_DXB_Link_Error(void);
-static uint8_t do_NEW_Ext_Prm_Data(void);
-static uint8_t do_DXB_Out(void);
-static uint8_t do_Poll_End_Ind(void);
-static uint8_t do_FDL_Inf(void);
-
-
 uint16_t getOutputBufPnt(void);
 uint16_t getInputBufPnt(void);
 
@@ -41,24 +23,26 @@ uint8_t N_Din; // номер следующего выходного буфер�
 PzdiPzdo_Type PzdiPzdo;
 
 //Массив указателей на обработчики прерываний
+/*
 static uint8_t (*pHandlerProfi[])(void) = {
-    do_MAC_Reset/*0*/,
-    do_GO_LEAVE_DATA_EX/*1*/,
-    do_Baudrate_Detect/*2*/,
-    do_WD_DP_MODE_TIMEOUT/*3*/,
-    do_User_Timer_Clock/*4*/,
-    do_DXB_Link_Error/*5*/,
-    do_NEW_Ext_Prm_Data/*6*/,
-    do_DXB_Out/*7*/,
-    do_NEW_GC_COMMAND/*8*/,
-    do_NEW_SSA_DATA/*9*/,
-    do_Cfg/*10*/,
-    do_Prm/*11*/,
-    do_Diag/*12*/,
-    do_DX_OUT/*13*/,
-    do_Poll_End_Ind/*14*/,
-    do_FDL_Inf/*15*/,
+    do_MAC_Reset,
+    do_GO_LEAVE_DATA_EX,
+    do_Baudrate_Detect,
+    do_WD_DP_MODE_TIMEOUT,
+    do_User_Timer_Clock,
+    do_DXB_Link_Error,
+    do_NEW_Ext_Prm_Data,
+    do_DXB_Out,
+    do_NEW_GC_COMMAND,
+    do_NEW_SSA_DATA,
+    do_Cfg,
+    do_Prm,
+    do_Diag,
+    do_DX_OUT,
+    do_Poll_End_Ind,
+    do_FDL_Inf,
 };
+*/
 
 /**
   * @brief  Инициализация микросхемы VPC3+S
@@ -509,8 +493,8 @@ void VPC3_InterruptProcessing(void)
     uint16_t intRequestReg = 0;
     uint16_t intReg = 0;
     uint16_t i;
-
-    
+ 
+    /*
     //Считываем слово текущих запросов прерываний
     regAddr = GET_VPC_ADR(int_req1);
     readVPC3(&intRequestReg, regAddr, sizeof(intRequestReg));
@@ -527,8 +511,8 @@ void VPC3_InterruptProcessing(void)
       intRequestReg ^= NEW_PRM_DATA;
     }
 
-    /*Для каждого бита, установленного в слове запросов прерываний,
-      вызываем соответствующую функцию */
+    //Для каждого бита, установленного в слове запросов прерываний,
+    //вызываем соответствующую функцию
     i = 0;
     while(intRequestReg){
       if(intRequestReg & (1 << i)){
@@ -539,11 +523,12 @@ void VPC3_InterruptProcessing(void)
       intRequestReg &= ~(1 << i);
       i++;
     }
+    */
 }
 
 
 #warning Разобраться что делает эта функция
-static uint8_t do_MAC_Reset(void)
+uint8_t do_MAC_Reset(void)
 {
   uint8_t val;
   uint16_t modeRegAddr = 0;
@@ -555,7 +540,7 @@ static uint8_t do_MAC_Reset(void)
   return 0;
 }
 
-static uint8_t do_GO_LEAVE_DATA_EX(void)
+uint8_t do_GO_LEAVE_DATA_EX(void)
 {
   uint16_t regAddr;
   uint8_t VPC3State;
@@ -572,17 +557,17 @@ static uint8_t do_GO_LEAVE_DATA_EX(void)
   return 0;
 }
 
-static uint8_t do_Baudrate_Detect(void)
+uint8_t do_Baudrate_Detect(void)
 {
   return 0;
 }
 
-static uint8_t do_WD_DP_MODE_TIMEOUT(void)
+uint8_t do_WD_DP_MODE_TIMEOUT(void)
 {
   return 0;
 }
 
-static uint8_t do_User_Timer_Clock(void)
+uint8_t do_User_Timer_Clock(void)
 {
   
   uint16_t regAddr;
@@ -599,29 +584,29 @@ static uint8_t do_User_Timer_Clock(void)
   return 0;
 }
 
-static uint8_t do_DXB_Link_Error(void)
+uint8_t do_DXB_Link_Error(void)
 {
   return 0;
 }
 
-static uint8_t do_NEW_Ext_Prm_Data(void)
-{
-  return 0;
-}
-
-
-static uint8_t do_DXB_Out(void)
-{
-  return 0;
-}
-
-static uint8_t do_NEW_GC_COMMAND(void)
+uint8_t do_NEW_Ext_Prm_Data(void)
 {
   return 0;
 }
 
 
-static uint8_t do_NEW_SSA_DATA(void)
+uint8_t do_DXB_Out(void)
+{
+  return 0;
+}
+
+uint8_t do_NEW_GC_COMMAND(void)
+{
+  return 0;
+}
+
+
+uint8_t do_NEW_SSA_DATA(void)
 {
   return 0;
 }
@@ -629,7 +614,7 @@ static uint8_t do_NEW_SSA_DATA(void)
 
 #warning Эта функция по факту в техасе вроде как не вызывалась. Проверить как вызывалась альтернативная функция.
 #warning Скорее всего ее нужно заменить на ту что по факту вызвалась в техасовском проекте
-static uint8_t do_Prm(void)
+uint8_t do_Prm(void)
 {
     uint8_t prmVal;
     uint16_t regAddr;
@@ -695,7 +680,7 @@ static uint8_t do_Prm(void)
   * @param  None
   * @retval None
   */
-static uint8_t do_Cfg(void)
+uint8_t do_Cfg(void)
 {
   uint8_t len_cfg_data;
   uint8_t prmVal;
@@ -744,7 +729,7 @@ static uint8_t do_Cfg(void)
 
 #warning Эта функция по факту в техасе вроде как не вызывалась. Проверить как вызывалась альтернативная функция.
 #warning Скорее всего ее нужно заменить на ту что по факту вызвалась в техасовском проекте
-static uint8_t do_Diag(void)
+uint8_t do_Diag(void)
 {
   uint8_t Diag[LEN_DIAG_BUF];
   uint8_t NDiag;
@@ -791,7 +776,7 @@ static uint8_t do_Diag(void)
   */
 #warning В техасовском проекте эта обработка вызывалась не в прерывании
 #warning Почему тут опрашиваются не запросы а флаги?
-static uint8_t do_DX_OUT(void)
+uint8_t do_DX_OUT(void)
 {
   uint16_t pp1;
   uint16_t regAddr;
@@ -875,12 +860,12 @@ static uint8_t do_DX_OUT(void)
   return 0; 
 }
 
-static uint8_t do_Poll_End_Ind(void)
+uint8_t do_Poll_End_Ind(void)
 {
   return 0;
 }
 
-static uint8_t do_FDL_Inf(void)
+uint8_t do_FDL_Inf(void)
 {
   return 0;
 }

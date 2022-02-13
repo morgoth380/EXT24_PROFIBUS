@@ -470,4 +470,5 @@ typedef enum
 #define VPC3_CFG_SF_LENGTH                ((uint8_t)0x3F)
 
 
+
 #endif //__VPC3_H

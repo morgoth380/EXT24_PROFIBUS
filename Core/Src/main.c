@@ -48,8 +48,11 @@
 
 /* USER CODE END PV */
 
+
+
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -58,6 +61,44 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN 0 */
 
 /* USER CODE END 0 */
+
+uint8_t do_MAC_Reset(void);
+uint8_t do_GO_LEAVE_DATA_EX(void);
+uint8_t do_Baudrate_Detect(void);
+uint8_t do_WD_DP_MODE_TIMEOUT(void);
+uint8_t do_User_Timer_Clock(void);
+uint8_t do_NEW_GC_COMMAND(void);
+uint8_t do_NEW_SSA_DATA(void);
+uint8_t do_Prm(void);
+uint8_t do_Cfg(void);
+uint8_t do_Diag(void);
+uint8_t do_DX_OUT(void);
+uint8_t do_DXB_Link_Error(void);
+uint8_t do_NEW_Ext_Prm_Data(void);
+uint8_t do_DXB_Out(void);
+uint8_t do_Poll_End_Ind(void);
+uint8_t do_FDL_Inf(void);
+
+static uint8_t (*pHandlerProfi[])(void) = {
+    do_MAC_Reset,
+    do_GO_LEAVE_DATA_EX,
+    do_Baudrate_Detect,
+    do_WD_DP_MODE_TIMEOUT,
+    do_User_Timer_Clock,
+    do_DXB_Link_Error,
+    do_NEW_Ext_Prm_Data,
+    do_DXB_Out,
+    do_NEW_GC_COMMAND,
+    do_NEW_SSA_DATA,
+    do_Cfg,
+    do_Prm,
+    do_Diag,
+    do_DX_OUT,
+    do_Poll_End_Ind,
+    do_FDL_Inf,
+};
+
+
 
 /**
   * @brief  The application entry point.
@@ -71,6 +112,18 @@ int main(void)
   uint16_t VPC3_Status;
   uint16_t boudrateStatus;
   uint16_t interuptStatus;
+  uint16_t debugCmpResult;
+  uint16_t intRequestReg;
+  uint16_t intRequestRegAck;
+  uint16_t i;
+  uint16_t resetMask;
+  uint16_t checkMask;
+  uint16_t val;
+  
+  #pragma pack(push,1)
+  uint8_t debugWrBuf[10];
+  uint8_t debugRdBuf[10];
+  #pragma pack(pop)
   
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -97,10 +150,73 @@ int main(void)
     readVPC3(&regVal, addr, sizeof(regVal));
     boudrateStatus = (regVal >> 8) & 0x0F;
     
-    if(boudrateStatus != 0x09){
+    if(boudrateStatus == 0x0F){
       boudrateStatus++;
       boudrateStatus--;
+    }else{
+        //Пока обрабатываем событие в режиме проверки статусов
+        addr = GET_VPC_ADR(int_req1);
+        intRequestReg = 0;
+        readVPC3(&intRequestReg, addr, sizeof(intRequestReg));
+
+        /*Для каждого бита, установленного в слове запросов прерываний,
+         вызываем соответствующую функцию */
+        intRequestRegAck = intRequestReg;
+        i = 0;
+        while(intRequestReg){
+          checkMask = 1 << i;
+          if(intRequestReg & checkMask){
+            if(pHandlerProfi[i]){
+              pHandlerProfi[i]();
+            }
+          }
+          resetMask = ~checkMask;
+          intRequestReg &= resetMask;
+          i++;
+        }
+        
+        addr = GET_VPC_ADR(isreg.wr.int_ack1);
+        writeVPC3(addr, &intRequestRegAck, sizeof(uint16_t));
+        
+        if(intRequestRegAck != 0){ //если было прерывание
+          val = EOI;
+          addr = GET_VPC_ADR(ctrl_reg.wr.mode_reg1_s);
+          writeVPC3(addr, &val, sizeof(uint8_t));
+        }
+     }
+    /*
+    debugWrBuf[0] = 0;
+    debugWrBuf[1] = 1;
+    debugWrBuf[2] = 2;
+    debugWrBuf[3] = 3;
+    debugWrBuf[4] = 4;
+    debugWrBuf[5] = 5;
+    debugWrBuf[6] = 6;
+    debugWrBuf[7] = 7;
+    debugWrBuf[8] = 8;
+    debugWrBuf[9] = 9;
+    
+    debugRdBuf[0] = 0;
+    debugRdBuf[1] = 0;
+    debugRdBuf[2] = 0;
+    debugRdBuf[3] = 0;
+    debugRdBuf[4] = 0;
+    debugRdBuf[5] = 0;
+    debugRdBuf[6] = 0;
+    debugRdBuf[7] = 0;
+    debugRdBuf[8] = 0;
+    debugRdBuf[9] = 0;
+    
+    addr = GET_DP_BUFFERS(Din_Buf1);
+
+    writeVPC3(addr, &debugWrBuf[0], sizeof(debugWrBuf));
+    readVPC3(&debugRdBuf[0], addr, sizeof(debugRdBuf));
+    debugCmpResult = memcmp(&debugWrBuf[0], &debugRdBuf[0], sizeof(debugRdBuf));
+    if(debugCmpResult != 0){
+      debugCmpResult++;
+      debugCmpResult--;
     }
+    */
     
     /*
     //Текущие запросы прерываний
