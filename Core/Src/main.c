@@ -119,6 +119,8 @@ int main(void)
   uint16_t resetMask;
   uint16_t checkMask;
   uint16_t val;
+  static uint16_t intRequestArray[15] = {0};
+  static uint16_t j = 0;
   
   #pragma pack(push,1)
   uint8_t debugWrBuf[10];
@@ -161,6 +163,12 @@ int main(void)
 
         /*Для каждого бита, установленного в слове запросов прерываний,
          вызываем соответствующую функцию */
+        
+        if((intRequestReg != 0) && (j < 15)){
+          intRequestArray[j++] = intRequestReg;
+        }
+        
+        
         intRequestRegAck = intRequestReg;
         i = 0;
         while(intRequestReg){

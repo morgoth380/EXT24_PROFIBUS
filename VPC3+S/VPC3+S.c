@@ -522,8 +522,8 @@ void VPC3_InterruptProcessing(void)
       }
       intRequestReg &= ~(1 << i);
       i++;
-    }
-    */
+    }*/
+    
 }
 
 
